@@ -21,7 +21,6 @@ override func viewDidLoad() {
         configureTextDetection()
         configureCamera()
     }
-    
 }
 
 override func didReceiveMemoryWarning() {
@@ -33,7 +32,6 @@ private func configureTextDetection() {
     textDetectionRequest!.reportCharacterBoxes = true
 }
 private func configureCamera() {
-    preview.session = session
     
     let cameraDevices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: AVMediaType.video, position: .back)
     var cameraDevice: AVCaptureDevice?
@@ -59,7 +57,6 @@ private func configureCamera() {
     if session.canAddOutput(videoDataOutput) {
         session.addOutput(videoDataOutput)
     }
-    preview.videoPreviewLayer.videoGravity = .resize
     session.startRunning()
 }
 private func handleDetection(request: VNRequest, error: Error?) {
@@ -71,43 +68,10 @@ private func handleDetection(request: VNRequest, error: Error?) {
     let textResults = detectionResults.map() {
         return $0 as? VNTextObservation
     }
-    if textResults.isEmpty {
-        return
-    }
     textObservations = textResults as! [VNTextObservation]
-    DispatchQueue.main.async {
-        
-        guard let sublayers = self.view.layer.sublayers else {
-            return
-        }
-        for layer in sublayers[1...] {
-            if (layer as? CATextLayer) == nil {
-                layer.removeFromSuperlayer()
-            }
-        }
-        let viewWidth = self.view.frame.size.width
-        let viewHeight = self.view.frame.size.height
-        for result in textResults {
-
-            if let textResult = result {
-                
-                let layer = CALayer()
-                var rect = textResult.boundingBox
-                rect.origin.x *= viewWidth
-                rect.size.height *= viewHeight
-                rect.origin.y = ((1 - rect.origin.y) * viewHeight) - rect.size.height
-                rect.size.width *= viewWidth
-
-                layer.frame = rect
-                layer.borderWidth = 2
-                layer.borderColor = UIColor.red.cgColor
-                self.view.layer.addSublayer(layer)
-            }
-        }
-    }
 }
-private var preview: PreviewView {
-    return view as! PreviewView
+private var imageView: UIImageView {
+    return view as! UIImageView
 }
 private func isAuthorized() -> Bool {
     let authorizationStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
@@ -132,11 +96,15 @@ private var textDetectionRequest: VNDetectTextRectanglesRequest?
 private let session = AVCaptureSession()
 private var textObservations = [VNTextObservation]()
 private var tesseract = G8Tesseract(language: "eng", engineMode: .tesseractOnly)
+private var start = CFAbsoluteTimeGetCurrent()
+private let textAttributes = [NSAttributedStringKey.font: UIFont.systemFont(ofSize: 80), NSAttributedStringKey.foregroundColor: UIColor.red]
+private let fpsTextRect = CGRect(x: 100, y: 100, width: 300, height: 100)
 }
 
 extension ViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
 // MARK: - Camera Delegate and Setup
 func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    start = CFAbsoluteTimeGetCurrent()
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
     }
@@ -155,7 +123,13 @@ func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBu
     let transform = ciImage.orientationTransform(for: CGImagePropertyOrientation(rawValue: 6)!)
     ciImage = ciImage.transformed(by: transform)
     let size = ciImage.extent.size
-    var recognizedTextPositionTuples = [(rect: CGRect, text: String)]()
+    let ciContext = CIContext(options: nil)
+    guard let completeCGImage = ciContext.createCGImage(ciImage, from: CGRect(origin: CGPoint(x: 0, y: 0), size: size)) else {
+        return
+    }
+    var image = UIImage(cgImage: completeCGImage)
+    UIGraphicsBeginImageContext(size);
+    image.draw(in: CGRect(origin: CGPoint(x: 0, y: 0), size: size))
     for textObservation in textObservations {
         guard let rects = textObservation.characterBoxes else {
             continue
@@ -188,37 +162,26 @@ func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBu
             let y = 1 - yMax
             let width = xMax - xMin
             let height = yMax - yMin
-            recognizedTextPositionTuples.append((rect: CGRect(x: x, y: y, width: width, height: height), text: text))
-        }
-    }
-    textObservations.removeAll()
-    DispatchQueue.main.async {
-        let viewWidth = self.view.frame.size.width
-        let viewHeight = self.view.frame.size.height
-        guard let sublayers = self.view.layer.sublayers else {
-            return
-        }
-        for layer in sublayers[1...] {
             
-            if let _ = layer as? CATextLayer {
-                layer.removeFromSuperlayer()
+            let boundingRect = CGRect(x: x * size.width, y: y * size.height, width: width * size.width, height: height * size.height)
+            var textRect = boundingRect
+            textRect.size.width += 50
+            textRect.size.height += 50
+            (text as NSString).draw(in: textRect, withAttributes: textAttributes)
+            if let cgContext = UIGraphicsGetCurrentContext() {
+                cgContext.setStrokeColor(UIColor.blue.cgColor)
+                cgContext.setLineWidth(3)
+                cgContext.addRect(boundingRect)
+                cgContext.drawPath(using: .stroke)
             }
         }
-        for tuple in recognizedTextPositionTuples {
-            let textLayer = CATextLayer()
-            textLayer.backgroundColor = UIColor.clear.cgColor
-            var rect = tuple.rect
-
-            rect.origin.x *= viewWidth
-            rect.size.width *= viewWidth
-            rect.origin.y *= viewHeight
-            rect.size.height *= viewHeight
-
-            textLayer.frame = rect
-            textLayer.string = tuple.text
-            textLayer.foregroundColor = UIColor.green.cgColor
-            self.view.layer.addSublayer(textLayer)
-        }
+    }
+    (String(1 / (CFAbsoluteTimeGetCurrent() - start)) as NSString).draw(in: fpsTextRect, withAttributes: textAttributes)
+    image = UIGraphicsGetImageFromCurrentImageContext()!
+    UIGraphicsEndImageContext()
+    textObservations.removeAll()
+    DispatchQueue.main.async {
+        self.imageView.image = image
     }
 }
 }
