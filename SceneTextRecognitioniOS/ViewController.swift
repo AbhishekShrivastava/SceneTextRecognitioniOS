@@ -145,35 +145,17 @@ func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBu
             yMin = min(yMin, rect.bottomRight.y)
             yMax = max(yMax, rect.topRight.y)
         }
-        let imageRect = CGRect(x: xMin * size.width, y: yMin * size.height, width: (xMax - xMin) * size.width, height: (yMax - yMin) * size.height)
-        let context = CIContext(options: nil)
-        guard let cgImage = context.createCGImage(ciImage, from: imageRect) else {
-            continue
-        }
-        let uiImage = UIImage(cgImage: cgImage)
-        tesseract?.image = uiImage
-        tesseract?.recognize()
-        guard var text = tesseract?.recognizedText else {
-            continue
-        }
-        text = text.trimmingCharacters(in: CharacterSet.newlines)
-        if !text.isEmpty {
-            let x = xMin
-            let y = 1 - yMax
-            let width = xMax - xMin
-            let height = yMax - yMin
-            
-            let boundingRect = CGRect(x: x * size.width, y: y * size.height, width: width * size.width, height: height * size.height)
-            var textRect = boundingRect
-            textRect.size.width += 50
-            textRect.size.height += 50
-            (text as NSString).draw(in: textRect, withAttributes: textAttributes)
-            if let cgContext = UIGraphicsGetCurrentContext() {
-                cgContext.setStrokeColor(UIColor.blue.cgColor)
-                cgContext.setLineWidth(3)
-                cgContext.addRect(boundingRect)
-                cgContext.drawPath(using: .stroke)
-            }
+        let x = xMin
+        let y = 1 - yMax
+        let width = xMax - xMin
+        let height = yMax - yMin
+        
+        let boundingRect = CGRect(x: x * size.width, y: y * size.height, width: width * size.width, height: height * size.height)
+        if let cgContext = UIGraphicsGetCurrentContext() {
+            cgContext.setStrokeColor(UIColor.blue.cgColor)
+            cgContext.setLineWidth(3)
+            cgContext.addRect(boundingRect)
+            cgContext.drawPath(using: .stroke)
         }
     }
     (String(1 / (CFAbsoluteTimeGetCurrent() - start)) as NSString).draw(in: fpsTextRect, withAttributes: textAttributes)
