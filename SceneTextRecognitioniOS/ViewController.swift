@@ -97,7 +97,8 @@ private let session = AVCaptureSession()
 private var textObservations = [VNTextObservation]()
 private var tesseract = G8Tesseract(language: "eng", engineMode: .tesseractOnly)
 private var start = CFAbsoluteTimeGetCurrent()
-private let textAttributes = [NSAttributedStringKey.font: UIFont.systemFont(ofSize: 30), NSAttributedStringKey.foregroundColor: UIColor.red]
+private let textAttributes = [NSAttributedStringKey.font: UIFont.systemFont(ofSize: 80), NSAttributedStringKey.foregroundColor: UIColor.red]
+private let fpsTextRect = CGRect(x: 100, y: 100, width: 300, height: 100)
 }
 
 extension ViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -162,12 +163,20 @@ func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBu
             let width = xMax - xMin
             let height = yMax - yMin
             
-            let textRect = CGRect(x: x * size.width, y: y * size.height, width: (width * size.width) + 20, height: (height * size.height) + 20)
+            let boundingRect = CGRect(x: x * size.width, y: y * size.height, width: width * size.width, height: height * size.height)
+            var textRect = boundingRect
+            textRect.size.width += 50
+            textRect.size.height += 50
             (text as NSString).draw(in: textRect, withAttributes: textAttributes)
+            if let cgContext = UIGraphicsGetCurrentContext() {
+                cgContext.setStrokeColor(UIColor.blue.cgColor)
+                cgContext.setLineWidth(3)
+                cgContext.addRect(boundingRect)
+                cgContext.drawPath(using: .stroke)
+            }
         }
     }
-    let textRect = CGRect(x: 100, y: 100, width: 300, height: 100)
-    (String(1 / (CFAbsoluteTimeGetCurrent() - start)) as NSString).draw(in: textRect, withAttributes: textAttributes)
+    (String(1 / (CFAbsoluteTimeGetCurrent() - start)) as NSString).draw(in: fpsTextRect, withAttributes: textAttributes)
     image = UIGraphicsGetImageFromCurrentImageContext()!
     UIGraphicsEndImageContext()
     textObservations.removeAll()
